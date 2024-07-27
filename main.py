@@ -106,4 +106,5 @@ def handle_audio_chunk(data):
         logger.error(f"Error processing audio chunk: {str(e)}")
 
 if __name__ == "__main__":
+    logger.info("Starting server...")
     socketio.run(app, host='0.0.0.0', port=5000)
