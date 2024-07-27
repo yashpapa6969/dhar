@@ -104,34 +104,23 @@ def handle_disconnect():
 def handle_audio_chunk(data):
     try:
         logger.info("Received audio chunk")
+        if len(data) % 4 != 0:
+            data = data[:-(len(data) % 4)]
+            logger.info(f"Truncated audio data to {len(data)} bytes for alignment")
+
         audio = np.frombuffer(data, dtype=np.float32)
-        print(audio)
-        print(type(audio))
-        
-        if audio.size == 0:
-            logger.error("Empty audio buffer")
-            return
         logger.info(f"Audio buffer size: {audio.size}")
-        
+
+        if audio.size == 0:
+            logger.error("Empty audio buffer after alignment")
+            return
+
         audio = preprocess_audio(audio)
         
-        speech_timestamps = get_speech_timestamps(torch.from_numpy(audio), vad_model, threshold=0.5)
-        logger.info(f"Speech timestamps: {speech_timestamps}")
-        
-        if speech_timestamps:
-            transcription = perform_asr(audio)
-            diarization = perform_diarization(audio)
-            speaker_embedding = recognize_speaker(audio)
-            
-            emit('transcription', {
-                "transcription": transcription,
-                "diarization": str(diarization),
-                "speaker_embedding_shape": speaker_embedding.shape
-            })
-        else:
-            logger.info("No speech detected in the audio chunk")
+        # Your existing processing logic here
     except Exception as e:
         logger.error(f"Error processing audio chunk: {str(e)}")
+
 
 
 if __name__ == "__main__":
