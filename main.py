@@ -10,6 +10,7 @@ from resemblyzer import VoiceEncoder, preprocess_wav
 import logging
 import os
 from dotenv import load_dotenv
+torch.backends.nnpack.enabled = False
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
