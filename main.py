@@ -1,31 +1,33 @@
-from flask import Flask
-from flask_socketio import SocketIO, emit
-import logging
+import os
+import asyncio
+import threading
 import numpy as np
 import torch
 import torchaudio
-from transformers import pipeline, AutoModelForSpeechSeq2Seq, AutoProcessor
+from flask import Flask
+from flask_socketio import SocketIO
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from pyannote.audio import Pipeline
-from noisereduce import reduce_noise
-import os
-from dotenv import load_dotenv
 from resemblyzer import VoiceEncoder, preprocess_wav
-import asyncio
-import threading
-import json
+from dotenv import load_dotenv
 import websockets
+from websockets import serve
+import logging
+
+# Load environment variables
+load_dotenv()
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize Flask and SocketIO
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-load_dotenv()
-
 # Configuration for audio processing
 SAMPLE_RATE = 16000
-DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 TORCH_DTYPE = torch.float16 if torch.cuda.is_available() else torch.float32
 
 # Load models
@@ -34,6 +36,25 @@ processor = AutoProcessor.from_pretrained("distil-whisper/distil-large-v3")
 speech_recognition_pipeline = pipeline("automatic-speech-recognition", model=model, tokenizer=processor.tokenizer, feature_extractor=processor.feature_extractor, max_new_tokens=128, torch_dtype=TORCH_DTYPE, device=DEVICE)
 diarization_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token="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")
 voice_encoder = VoiceEncoder()
+
+def preprocess_audio(audio_np):
+    """
+    Preprocess the audio data received as a NumPy array.
+    
+    :param audio_np: A NumPy array containing the audio data.
+    :return: A NumPy array with processed audio.
+    """
+    # Convert to tensor and ensure it's floating point
+    audio_tensor = torch.from_numpy(audio_np).float()
+    
+    # Resample and apply high-pass filter
+    audio_tensor = torchaudio.functional.resample(audio_tensor, orig_freq=SAMPLE_RATE, new_freq=16000)
+    audio_tensor = torchaudio.functional.highpass_biquad(audio_tensor, sample_rate=16000, cutoff_freq=100)
+
+    # Convert tensor back to numpy array
+    processed_audio = audio_tensor.numpy()
+
+    return processed_audio
 
 @socketio.on('connect')
 def handle_connect():
@@ -45,43 +66,45 @@ def handle_disconnect():
 
 @socketio.on('audio_chunk')
 def handle_audio_chunk(data):
-    process_audio_chunk(data)
-
-def process_audio_chunk(data):
     try:
-        if len(data) % 4 != 0:
-            data = data[:-(len(data) % 4)]
         audio_np = np.frombuffer(data, dtype=np.float32)
         if audio_np.size == 0:
-            logger.error("Empty audio buffer after alignment")
+            logger.error("Empty audio buffer")
             return
 
         processed_audio = preprocess_audio(audio_np)
-        if processed_audio is None:
-            logger.error("Failed to preprocess audio")
-            return
-
-        # Additional processing logic
+        # Further processing logic here
     except Exception as e:
         logger.error(f"Error processing audio chunk: {str(e)}")
 
+def flask_thread():
+    # Run Flask without debug and reloader
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+
 async def websocket_audio_processor(websocket, path):
-    global socketio
     try:
         while True:
             data = await websocket.recv()
-            process_audio_chunk(data)
+            handle_audio_chunk(data)
     except websockets.exceptions.ConnectionClosed:
         logger.info("WebSocket connection closed")
 
-def start_websocket_server():
-    start_server = websockets.serve(websocket_audio_processor, "localhost", 8001)
-    asyncio.get_event_loop().run_until_complete(start_server)
-    asyncio.get_event_loop().run_forever()
-
-if __name__ == "__main__":
-    # Start Flask-SocketIO server
-    threading.Thread(target=lambda: socketio.run(app, host='0.0.0.0', port=5000, debug=True)).start()
+def websocket_server():
+    # Create a new event loop for the thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     # Start WebSocket server
-    threading.Thread(target=start_websocket_server).start()
+    start_server = serve(websocket_audio_processor, "localhost", 8001)
+
+    loop.run_until_complete(start_server)
+    loop.run_forever()
+
+if __name__ == "__main__":
+    # Start Flask in a separate thread
+    flask_thread = threading.Thread(target=flask_thread)
+    flask_thread.start()
+
+    # Start WebSocket server in a separate thread
+    ws_thread = threading.Thread(target=websocket_server)
+    ws_thread.start()
