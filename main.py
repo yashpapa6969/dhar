@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-app = Flask(_name_)
+app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Global configurations
