@@ -32,7 +32,7 @@ TORCH_DTYPE = torch.float16 if torch.cuda.is_available() else torch.float32
 model = AutoModelForSpeechSeq2Seq.from_pretrained("distil-whisper/distil-large-v3", torch_dtype=TORCH_DTYPE, low_cpu_mem_usage=True, use_safetensors=True).to(DEVICE)
 processor = AutoProcessor.from_pretrained("distil-whisper/distil-large-v3")
 speech_recognition_pipeline = pipeline("automatic-speech-recognition", model=model, tokenizer=processor.tokenizer, feature_extractor=processor.feature_extractor, max_new_tokens=128, torch_dtype=TORCH_DTYPE, device=DEVICE)
-diarization_pipeline = Pipeline.from_pretrained(model_id, use_auth_token=auth_token)
+diarization_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token="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")
 voice_encoder = VoiceEncoder()
 
 @socketio.on('connect')
