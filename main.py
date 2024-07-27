@@ -1,21 +1,7 @@
 import torch
 import torchaudio
 import numpy as np
-import pyaudio
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
-from pyannote.audio import Pipeline
-import noisereduce as nr
-from scipy import signal
-import queue
-import threading
-import time
-import os
-from dotenv import load_dotenv
-from resemblyzer import VoiceEncoder, preprocess_wav
-import torch
-import torchaudio
-import numpy as np
-from flask import Flask, request, jsonify
+from flask import Flask
 from flask_socketio import SocketIO, emit
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from pyannote.audio import Pipeline
@@ -49,6 +35,8 @@ voice_encoder = VoiceEncoder()
 vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=True)
 (get_speech_timestamps, _, read_audio, _, _) = utils
 
+buffer = np.array([])
+
 def preprocess_audio(audio):
     if SAMPLE_RATE != 16000:
         resampler = torchaudio.transforms.Resample(SAMPLE_RATE, 16000)
@@ -74,30 +62,28 @@ def recognize_speaker(audio):
 
 @socketio.on('audio_chunk')
 def handle_audio_chunk(data):
+    global buffer
     audio_chunk = np.frombuffer(data, dtype=np.float32)
+    buffer = np.concatenate((buffer, audio_chunk))
 
-    # Preprocess audio
-    audio = preprocess_audio(audio_chunk)
+    if len(buffer) >= SAMPLE_RATE * 2:  # Process 2 seconds of audio at a time
+        audio = buffer[:SAMPLE_RATE * 2]
+        buffer = buffer[SAMPLE_RATE * 2:]
 
-    # Perform VAD
-    audio_tensor = torch.from_numpy(audio).float()
-    speech_timestamps = get_speech_timestamps(audio_tensor, vad_model, threshold=0.5)
+        audio = preprocess_audio(audio)
+        audio_tensor = torch.from_numpy(audio).float()
+        speech_timestamps = get_speech_timestamps(audio_tensor, vad_model, threshold=0.5)
 
-    if speech_timestamps:
-        # Perform ASR
-        transcription = perform_asr(audio)
+        if speech_timestamps:
+            transcription = perform_asr(audio)
+            diarization = perform_diarization(audio)
+            speaker_embedding = recognize_speaker(audio)
 
-        # Perform diarization
-        diarization = perform_diarization(audio)
-
-        # Recognize speaker
-        speaker_embedding = recognize_speaker(audio)
-
-        emit('transcription', {
-            "transcription": transcription,
-            "diarization": str(diarization),
-            "speaker_embedding_shape": speaker_embedding.shape
-        })
+            emit('transcription', {
+                "transcription": transcription,
+                "diarization": str(diarization),
+                "speaker_embedding_shape": speaker_embedding.shape
+            })
 
 if __name__ == "__main__":
     socketio.run(app, host='0.0.0.0', port=5000)
