@@ -61,12 +61,22 @@ vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
 (get_speech_timestamps, _, read_audio, _, _) = utils
 
 def preprocess_audio(audio):
+    # Convert to tensor and ensure it's floating point
     audio_tensor = torch.from_numpy(audio).float()
-    audio_tensor = torchaudio.functional.resample(audio_tensor, SAMPLE_RATE, 16000)
-    audio_tensor = torchaudio.functional.highpass_biquad(audio_tensor, 16000, 100)
+
+    # Check and handle non-finite values (NaN, Inf)
+    if not torch.isfinite(audio_tensor).all():
+        logger.error("Audio buffer contains non-finite values. Replacing them with zeros.")
+        audio_tensor = torch.where(torch.isfinite(audio_tensor), audio_tensor, torch.zeros_like(audio_tensor))
+
+    # Resample and apply high-pass filter
+    audio_tensor = torchaudio.functional.resample(audio_tensor, orig_freq=SAMPLE_RATE, new_freq=16000)
+    audio_tensor = torchaudio.functional.highpass_biquad(audio_tensor, sample_rate=16000, cutoff_freq=100)
+    
     # Noise reduction
     audio = nr.reduce_noise(y=audio_tensor.numpy(), sr=16000)
     return audio
+
 
 def perform_asr(audio):
     result = pipe(audio)
