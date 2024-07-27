@@ -79,18 +79,18 @@ def preprocess_audio(audio_np):
     # Check and handle non-finite values (NaN, Inf)
     if not torch.isfinite(audio_tensor).all():
         logger.error("Audio buffer contains non-finite values. Replacing them with zeros.")
-        audio_tensor = torch.where(torch.isfinite(audio_tensor), audio_tensor, torch.zeros_like(audio_tensor))
+        audio_tensor[~torch.isfinite(audio_tensor)] = 0.0  # Replace non-finite values with zeros
 
     # Resample and apply high-pass filter
     audio_tensor = torchaudio.functional.resample(audio_tensor, orig_freq=SAMPLE_RATE, new_freq=16000)
     audio_tensor = torchaudio.functional.highpass_biquad(audio_tensor, sample_rate=16000, cutoff_freq=100)
 
     # Noise reduction using 'noisereduce' which operates on NumPy arrays
-    # Convert tensor back to numpy array for noise reduction
     processed_audio = audio_tensor.numpy()
     processed_audio = nr.reduce_noise(y=processed_audio, sr=16000)
 
     return processed_audio
+
 
 def perform_asr(audio):
     result = pipe(audio)
