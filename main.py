@@ -60,9 +60,20 @@ vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                   force_reload=True)
 (get_speech_timestamps, _, read_audio, _, _) = utils
 
-def preprocess_audio(audio):
+def preprocess_audio(audio_np):
+    """
+    Preprocesses the audio data received as a NumPy array.
+    
+    :param audio_np: A NumPy array containing the audio data.
+    :return: A NumPy array with processed audio.
+    """
+    # Check that input is a NumPy array
+    if not isinstance(audio_np, np.ndarray):
+        logger.error("Expected audio input to be a NumPy array.")
+        return None
+
     # Convert to tensor and ensure it's floating point
-    audio_tensor = torch.from_numpy(audio).float()
+    audio_tensor = torch.from_numpy(audio_np).float()
 
     # Check and handle non-finite values (NaN, Inf)
     if not torch.isfinite(audio_tensor).all():
@@ -72,11 +83,13 @@ def preprocess_audio(audio):
     # Resample and apply high-pass filter
     audio_tensor = torchaudio.functional.resample(audio_tensor, orig_freq=SAMPLE_RATE, new_freq=16000)
     audio_tensor = torchaudio.functional.highpass_biquad(audio_tensor, sample_rate=16000, cutoff_freq=100)
-    
-    # Noise reduction
-    audio = nr.reduce_noise(y=audio_tensor.numpy(), sr=16000)
-    return audio
 
+    # Noise reduction using 'noisereduce' which operates on NumPy arrays
+    # Convert tensor back to numpy array for noise reduction
+    processed_audio = audio_tensor.numpy()
+    processed_audio = nr.reduce_noise(y=processed_audio, sr=16000)
+
+    return processed_audio
 
 def perform_asr(audio):
     result = pipe(audio)
@@ -116,10 +129,14 @@ def handle_audio_chunk(data):
             return
 
         audio = preprocess_audio(audio)
-        
-        # Your existing processing logic here
+        if audio is None:
+            logger.error("Failed to preprocess audio")
+            return
+
+        # Further processing...
     except Exception as e:
         logger.error(f"Error processing audio chunk: {str(e)}")
+
 
 
 
