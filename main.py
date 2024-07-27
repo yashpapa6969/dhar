@@ -82,6 +82,14 @@ def recognize_speaker(audio):
     embedding = voice_encoder.embed_utterance(preprocessed_wav)
     return embedding
 
+@socketio.on('connect')
+def handle_connect():
+    logger.info("Client connected")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    logger.info("Client disconnected")
+
 @socketio.on('audio_chunk')
 def handle_audio_chunk(data):
     try:
@@ -107,4 +115,4 @@ def handle_audio_chunk(data):
 
 if __name__ == "__main__":
     logger.info("Starting server...")
-    socketio.run(app, host='0.0.0.0', port=5000)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
