@@ -118,6 +118,10 @@ def handle_disconnect():
 def handle_audio_chunk(data):
     try:
         logger.info("Received audio chunk")
+        logger.info(data)
+        logger.info(type(data))
+
+
         if len(data) % 4 != 0:
             data = data[:-(len(data) % 4)]
             logger.info(f"Truncated audio data to {len(data)} bytes for alignment")
