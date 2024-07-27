@@ -127,16 +127,26 @@ def handle_audio_chunk(data):
 
         if audio.size == 0:
             logger.error("Empty audio buffer after alignment")
+            emit('error', {'message': 'Empty audio buffer received'})
             return
 
         audio = preprocess_audio(audio)
         if audio is None:
             logger.error("Failed to preprocess audio")
+            emit('error', {'message': 'Failed to preprocess audio'})
             return
 
-        # Further processing...
+        # Assuming further processing like ASR, Diarization is defined elsewhere
+        text = perform_asr(audio)
+        diarization_info = perform_diarization(audio)
+        logger.info(f"ASR Text: {text}")
+        logger.info(f"Diarization Info: {diarization_info}")
+
     except Exception as e:
         logger.error(f"Error processing audio chunk: {str(e)}")
+        emit('error', {'message': 'Error processing audio chunk'})
+
+
 
 
 
