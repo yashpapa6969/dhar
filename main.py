@@ -93,10 +93,17 @@ def handle_disconnect():
 @socketio.on('audio_chunk')
 def handle_audio_chunk(data):
     try:
+        logger.info("Received audio chunk")
         audio = np.frombuffer(data, dtype=np.float32)
+        if audio.size == 0:
+            logger.error("Empty audio buffer")
+            return
+        logger.info(f"Audio buffer size: {audio.size}")
+        
         audio = preprocess_audio(audio)
         
         speech_timestamps = get_speech_timestamps(torch.from_numpy(audio), vad_model, threshold=0.5)
+        logger.info(f"Speech timestamps: {speech_timestamps}")
         
         if speech_timestamps:
             transcription = perform_asr(audio)
@@ -112,6 +119,7 @@ def handle_audio_chunk(data):
             logger.info("No speech detected in the audio chunk")
     except Exception as e:
         logger.error(f"Error processing audio chunk: {str(e)}")
+
 
 if __name__ == "__main__":
     logger.info("Starting server...")
