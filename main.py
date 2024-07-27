@@ -12,7 +12,6 @@ import time
 import os
 from dotenv import load_dotenv
 from resemblyzer import VoiceEncoder, preprocess_wav
-
 import torch
 import torchaudio
 import numpy as np
