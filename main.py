@@ -95,6 +95,9 @@ def handle_audio_chunk(data):
     try:
         logger.info("Received audio chunk")
         audio = np.frombuffer(data, dtype=np.float32)
+        print(audio)
+        print(type(audio))
+        
         if audio.size == 0:
             logger.error("Empty audio buffer")
             return
