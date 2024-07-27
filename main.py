@@ -78,7 +78,7 @@ def preprocess_audio(audio_np):
 
     # Check and handle non-finite values (NaN, Inf)
     if not torch.isfinite(audio_tensor).all():
-        #logger.error("Audio buffer contains non-finite values. Replacing them with zeros.")
+        logger.error("Audio buffer contains non-finite values. Replacing them with zeros.")
         audio_tensor[~torch.isfinite(audio_tensor)] = 0.0  # Replace non-finite values with zeros
 
     # Resample and apply high-pass filter
