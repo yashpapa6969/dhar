@@ -1,26 +1,18 @@
+import websockets
+import json
+import numpy as np
+from scipy import signal
 import torch
 import torchaudio
-import numpy as np
-from flask import Flask
-from flask_socketio import SocketIO, emit
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from pyannote.audio import Pipeline
 import noisereduce as nr
 from resemblyzer import VoiceEncoder, preprocess_wav
 import logging
-import os
-from dotenv import load_dotenv
-torch.backends.nnpack.enabled = False
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
-
-app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+logger = logging.getLogger(_name_)
 
 # Global configurations
 SAMPLE_RATE = 16000
@@ -46,9 +38,7 @@ pipe = pipeline(
 
 # Initialize speaker diarization pipeline
 diarization_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1",
-                                                use_auth_token="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")
-
-# Move diarization pipeline to GPU if available
+                                                use_auth_token="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")
 if torch.cuda.is_available():
     diarization_pipeline.to(torch.device("cuda"))
 
@@ -61,100 +51,87 @@ vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                   force_reload=True)
 (get_speech_timestamps, _, read_audio, _, _) = utils
 
-def preprocess_audio(audio_np):
-    """
-    Preprocesses the audio data received as a NumPy array.
-    
-    :param audio_np: A NumPy array containing the audio data.
-    :return: A NumPy array with processed audio.
-    """
-    # Check that input is a NumPy array
-    if not isinstance(audio_np, np.ndarray):
-        logger.error("Expected audio input to be a NumPy array.")
-        return None
-
-    # Convert to tensor and ensure it's floating point
-    audio_tensor = torch.from_numpy(audio_np).float()
-
-    # Check and handle non-finite values (NaN, Inf)
-    if not torch.isfinite(audio_tensor).all():
-        logger.error("Audio buffer contains non-finite values. Replacing them with zeros.")
-        audio_tensor[~torch.isfinite(audio_tensor)] = 0.0  # Replace non-finite values with zeros
-
-    # Resample and apply high-pass filter
-    audio_tensor = torchaudio.functional.resample(audio_tensor, orig_freq=SAMPLE_RATE, new_freq=16000)
-    audio_tensor = torchaudio.functional.highpass_biquad(audio_tensor, sample_rate=16000, cutoff_freq=100)
-
-    # Noise reduction using 'noisereduce' which operates on NumPy arrays
-    processed_audio = audio_tensor.numpy()
-    processed_audio = nr.reduce_noise(y=processed_audio, sr=16000)
-
-    return processed_audio
-
+def preprocess_audio(audio):
+    audio_tensor = torch.from_numpy(audio).float()
+    audio_tensor = torchaudio.functional.resample(audio_tensor, SAMPLE_RATE, 16000)
+    audio_tensor = torchaudio.functional.highpass_biquad(audio_tensor, 16000, 100)
+    audio = nr.reduce_noise(y=audio_tensor.numpy(), sr=16000)
+    return audio
 
 def perform_asr(audio):
     result = pipe(audio)
     return result["text"]
 
 def perform_diarization(audio):
-    audio_tensor = torch.from_numpy(audio).float().unsqueeze(0)
-    diarization = diarization_pipeline({"waveform": audio_tensor, "sample_rate": 16000})
+    diarization = diarization_pipeline({"waveform": torch.from_numpy(audio).to(device), "sample_rate": 16000})
     return diarization
 
-def recognize_speaker(audio):
-    preprocessed_wav = preprocess_wav(audio)
-    embedding = voice_encoder.embed_utterance(preprocessed_wav)
-    return embedding
-
-@socketio.on('connect')
-def handle_connect():
-    logger.info("Client connected")
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    logger.info("Client disconnected")
-
-@socketio.on('audio_chunk')
-def handle_audio_chunk(data):
+def process_audio_chunk(audio):
     try:
-        logger.info("Received audio chunk")
-        logger.info(data)
-        logger.info(type(data))
-
-
-        if len(data) % 4 != 0:
-            data = data[:-(len(data) % 4)]
-            logger.info(f"Truncated audio data to {len(data)} bytes for alignment")
-
-        audio = np.frombuffer(data, dtype=np.float32)
-        logger.info(f"Audio buffer size: {audio.size}")
-
-        if audio.size == 0:
-            logger.error("Empty audio buffer after alignment")
-            emit('error', {'message': 'Empty audio buffer received'})
-            return
+        speech_timestamps = get_speech_timestamps(torch.from_numpy(audio), vad_model, threshold=0.5)
+        if not speech_timestamps:
+            return None, None, None
 
         audio = preprocess_audio(audio)
-        if audio is None:
-            logger.error("Failed to preprocess audio")
-            emit('error', {'message': 'Failed to preprocess audio'})
-            return
-
-        # Assuming further processing like ASR, Diarization is defined elsewhere
-        text = perform_asr(audio)
-        diarization_info = perform_diarization(audio)
-        logger.info(f"ASR Text: {text}")
-        logger.info(f"Diarization Info: {diarization_info}")
-
+        transcription = perform_asr(audio)
+        diarization = perform_diarization(audio)
+        speaker_embedding = voice_encoder.embed_utterance(preprocess_wav(audio))
+        return transcription, diarization, speaker_embedding
     except Exception as e:
         logger.error(f"Error processing audio chunk: {str(e)}")
-        emit('error', {'message': 'Error processing audio chunk'})
+        return None, None, None
 
+async def handle_client(websocket, path):
+    logger.info("Client connected")
+    buffer = np.array([])
 
+    async for message in websocket:
+        # Extract metadata
+        metadata_length = int.from_bytes(message[:4], byteorder='little')
+        metadata_json = message[4:4+metadata_length].decode('utf-8')
+        metadata = json.loads(metadata_json)
+        sample_rate = metadata['sampleRate']
 
+        # Extract audio data
+        audio_data = message[4+metadata_length:]
+        
+        # Convert 16-bit PCM to 32-bit float
+        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
+        # Resample if necessary
+        if sample_rate != SAMPLE_RATE:
+            audio_np = signal.resample(audio_np, int(len(audio_np) * SAMPLE_RATE / sample_rate))
 
+        # Add to buffer
+        buffer = np.concatenate((buffer, audio_np))
 
-if __name__ == "__main__":
-    logger.info("Starting server...")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+        # Process in 2-second chunks
+        chunk_size = 2 * SAMPLE_RATE
+        while len(buffer) >= chunk_size:
+            chunk = buffer[:chunk_size]
+            buffer = buffer[chunk_size:]
+
+            # Process the chunk
+            transcription, diarization, speaker_embedding = process_audio_chunk(chunk)
+
+            if transcription:
+                # Send realtime transcription
+                await websocket.send(json.dumps({
+                    'type': 'realtime',
+                    'text': transcription
+                }))
+
+                # Log results
+                logger.info(f"Transcription: {transcription}")
+                logger.info(f"Diarization: {diarization}")
+                logger.info(f"Speaker embedding shape: {speaker_embedding.shape}")
+
+                # You can add logic here to determine when to send a 'fullSentence' message
+
+async def main():
+    server = await websockets.serve(handle_client, "localhost", 5000)
+    logger.info("Server started. Press Ctrl+C to stop the server.")
+    await server.wait_closed()
+
+if _name_ == "_main_":
+    asyncio.run(main())
