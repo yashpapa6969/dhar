@@ -1,6 +1,6 @@
-# Customer Query Answering System with Real-Time ASR and RAG
+# Customer Query Resolution System with Real-Time ASR powered by Advanced RAG
 
-This project integrates real-time Automatic Speech Recognition (ASR) using sockets, powered by a Large Language Model (LLM) utilizing Retrieval-Augmented Generation (RAG) to answer customer queries. The RAG implements adaptive, corrective, and self-reflective functionalities to enhance response accuracy and relevance.
+This project integrates real-time Automatic Speech Recognition (ASR) using sockets, powered by a LLM utilizing Retrieval-Augmented Generation (RAG) to answer customer queries. The RAG implements adaptive, corrective, and self-reflective functionalities to enhance response accuracy and relevance.
 
 ## System Overview
 
