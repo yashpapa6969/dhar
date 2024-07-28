@@ -1,3 +1,4 @@
+import asyncio
 import websockets
 import json
 import numpy as np
@@ -39,6 +40,7 @@ pipe = pipeline(
 # Initialize speaker diarization pipeline
 diarization_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1",
                                                 use_auth_token="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")
+
 if torch.cuda.is_available():
     diarization_pipeline.to(torch.device("cuda"))
 
@@ -129,7 +131,7 @@ async def handle_client(websocket, path):
                 # You can add logic here to determine when to send a 'fullSentence' message
 
 async def main():
-    server = await websockets.serve(handle_client, "localhost", 5000)
+    server = await websockets.serve(handle_client, "localhost", 8001)
     logger.info("Server started. Press Ctrl+C to stop the server.")
     await server.wait_closed()
 
