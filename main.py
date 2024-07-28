@@ -35,15 +35,12 @@ class AudioChunk:
 
 class AudioBuffer:
     def __init__(self, max_duration: float = 30.0):
-        self.buffer = deque()
-        self.max_size = int(max_duration * SAMPLE_RATE)
+        self.buffer = deque(maxlen=int(max_duration * SAMPLE_RATE))
         self.lock = Lock()
 
     def add(self, chunk: np.ndarray):
         with self.lock:
             self.buffer.extend(chunk)
-            while len(self.buffer) > self.max_size:
-                self.buffer.popleft()
 
     def get(self, duration: float) -> np.ndarray:
         size = int(duration * SAMPLE_RATE)
@@ -177,19 +174,23 @@ async def handle_client(websocket, path):
 
             # Add to buffer
             timestamp = time.time()
-            audio_buffer.add(AudioChunk(audio_np, timestamp))
+            audio_buffer.add(audio_np)
 
             # Process chunks
             chunk = audio_buffer.get(CHUNK_DURATION)
-            transcription, timestamps, diarization, speaker_embedding = await process_audio_chunk(AudioChunk(chunk, timestamp))
+            chunk_obj = AudioChunk(chunk, timestamp)
+            transcription, timestamps, diarization, speaker_embedding = await process_audio_chunk(chunk_obj)
 
             if transcription:
                 last_speech_time = time.time()
                 speech_active = True
                 
                 # Add transcription with timestamps
-                for t in timestamps:
-                    transcription_manager.add(t['text'], t['timestamp'][0] + timestamp, t['timestamp'][1] + timestamp)
+                if timestamps:
+                    for t in timestamps:
+                        transcription_manager.add(t['text'], t['timestamp'][0] + timestamp, t['timestamp'][1] + timestamp)
+                else:
+                    transcription_manager.add(transcription, timestamp, timestamp + CHUNK_DURATION)
                 
                 # Send interim transcription
                 concatenated_transcription = transcription_manager.get_concatenated()
