@@ -47,7 +47,7 @@ pipe = pipeline(
 
 # Initialize speaker diarization pipeline
 diarization_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1",
-                                                use_auth_token="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")
+                                                use_auth_token="")
 
 if torch.cuda.is_available():
     diarization_pipeline = diarization_pipeline.to(torch.device("cuda"))
