@@ -61,8 +61,7 @@ vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                   force_reload=True,
                                   onnx=True)
 
-# Load the onnx model
-ort_session = ort.InferenceSession(vad_model, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+
 (get_speech_timestamps, _, read_audio, *_) = utils
 
 # Transcription handling
@@ -173,7 +172,7 @@ async def handle_client(websocket, path):
             audio_buffer = deque(list(audio_buffer)[-OVERLAP_SIZE:], maxlen=CHUNK_SIZE + OVERLAP_SIZE)
 
 async def main():
-    server = await websockets.serve(handle_client, "localhost", 8001)
+    server = await websockets.serve(handle_client, "0.0.0.0", 5000)
     logger.info("Server started. Press Ctrl+C to stop the server.")
     await server.wait_closed()
 
