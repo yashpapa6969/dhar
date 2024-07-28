@@ -60,7 +60,7 @@ vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                   onnx=True)
 
 # Load the onnx model
-
+ort_session = ort.InferenceSession(vad_model, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 (get_speech_timestamps, _, read_audio, *_) = utils
 
 # Audio buffer for continuous processing
@@ -78,18 +78,6 @@ def preprocess_audio(audio):
     audio = nr.reduce_noise(y=audio_tensor.numpy(), sr=16000)
     return audio
 
-def perform_vad(audio):
-    # Prepare the input
-    input_data = np.expand_dims(audio, axis=0).astype(np.float32)
-    ort_inputs = {ort_session.get_inputs()[0].name: input_data}
-    
-    # Run the model
-    ort_outs = ort_session.run(None, ort_inputs)
-    
-    # Post-process the output
-    speech_probs = ort_outs[0][:, 1]
-    speech_timestamps = get_speech_timestamps(speech_probs, ort_session, threshold=0.5)
-    return speech_timestamps
 
 def perform_asr(audio):
     result = pipe(audio)
@@ -107,7 +95,8 @@ def perform_diarization(audio):
 
 async def process_audio_chunk(audio):
     try:
-        speech_timestamps = perform_vad(audio)
+        audio1= torch.from_numpy(audio).float()
+        speech_timestamps = get_speech_timestamps(audio1, vad_model, threshold=0.5)
         if not speech_timestamps:
             return None, None, None
 
