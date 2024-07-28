@@ -74,7 +74,7 @@ weaviate_client.schema.get()
 
 # from groq import Groq
 
-# os.environ["GROQ_API_KEY"] = "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"
+# os.environ["GROQ_API_KEY"] = ""
 
 # groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
