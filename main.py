@@ -131,7 +131,7 @@ async def handle_client(websocket, path):
                 # You can add logic here to determine when to send a 'fullSentence' message
 
 async def main():
-    server = await websockets.serve(handle_client, "localhost", 8001)
+    server = await websockets.serve(handle_client, "localhost", 5000)
     logger.info("Server started. Press Ctrl+C to stop the server.")
     await server.wait_closed()
 
