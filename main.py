@@ -10,6 +10,7 @@ from pyannote.audio import Pipeline
 import noisereduce as nr
 from resemblyzer import VoiceEncoder, preprocess_wav
 import logging
+import threading
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +54,10 @@ vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                   force_reload=True)
 (get_speech_timestamps, _, read_audio, _, _) = utils
 
+client_websocket = None
+buffer = np.array([])
+
+
 def preprocess_audio(audio):
     audio_tensor = torch.from_numpy(audio).float()
     audio_tensor = torchaudio.functional.resample(audio_tensor, SAMPLE_RATE, 16000)
@@ -60,13 +65,16 @@ def preprocess_audio(audio):
     audio = nr.reduce_noise(y=audio_tensor.numpy(), sr=16000)
     return audio
 
+
 def perform_asr(audio):
     result = pipe(audio)
     return result["text"]
 
+
 def perform_diarization(audio):
     diarization = diarization_pipeline({"waveform": torch.from_numpy(audio).to(device), "sample_rate": 16000})
     return diarization
+
 
 def process_audio_chunk(audio):
     try:
@@ -83,20 +91,27 @@ def process_audio_chunk(audio):
         logger.error(f"Error processing audio chunk: {str(e)}")
         return None, None, None
 
+
+async def send_to_client(message):
+    if client_websocket:
+        await client_websocket.send(message)
+
+
 async def handle_client(websocket, path):
+    global client_websocket, buffer
     logger.info("Client connected")
-    buffer = np.array([])
+    client_websocket = websocket
 
     async for message in websocket:
         # Extract metadata
         metadata_length = int.from_bytes(message[:4], byteorder='little')
-        metadata_json = message[4:4+metadata_length].decode('utf-8')
+        metadata_json = message[4:4 + metadata_length].decode('utf-8')
         metadata = json.loads(metadata_json)
         sample_rate = metadata['sampleRate']
 
         # Extract audio data
-        audio_data = message[4+metadata_length:]
-        
+        audio_data = message[4 + metadata_length:]
+
         # Convert 16-bit PCM to 32-bit float
         audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
@@ -118,7 +133,7 @@ async def handle_client(websocket, path):
 
             if transcription:
                 # Send realtime transcription
-                await websocket.send(json.dumps({
+                await send_to_client(json.dumps({
                     'type': 'realtime',
                     'text': transcription
                 }))
@@ -130,10 +145,13 @@ async def handle_client(websocket, path):
 
                 # You can add logic here to determine when to send a 'fullSentence' message
 
+
 async def main():
     server = await websockets.serve(handle_client, "0.0.0.0", 5000)
     logger.info("Server started. Press Ctrl+C to stop the server.")
-    await server.wait_closed()
+    await asyncio.Future() 
+
 
 if __name__ == "__main__":
+    print("Starting server, please wait...")
     asyncio.run(main())
