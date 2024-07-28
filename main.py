@@ -60,7 +60,9 @@ vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                   onnx=True)
 
 # Load the onnx model
-ort_session = ort.InferenceSession(vad_model, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+
+ort_session = ort.InferenceSession("snakers4/silero-vad", providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+
 (get_speech_timestamps, _, read_audio, *_) = utils
 
 # Audio buffer for continuous processing
