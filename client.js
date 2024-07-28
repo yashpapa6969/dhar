@@ -1,96 +1,122 @@
-let displayDiv = document.getElementById('textDisplay');
-let serverAvailable = false;
-let micAvailable = false;
-let fullSentences = [];
-const serverCheckInterval = 5000; // Check every 5 seconds
+document.addEventListener("DOMContentLoaded", () => {
+    const displayDiv = document.getElementById('textDisplay');
+    let socket;
+    let audioContext, source, processor;
+    let ttsUtterance;
+    let isMicActive = true; // New variable to track microphone status
+    let canSendWebSocket = true; // Flag to control WebSocket communication
 
-let socket; // Handle to the WebSocket
+    function setupWebSocket() {
+        socket = new WebSocket("ws://97.119.112.191:40001");
+        socket.onopen = () => {
+            console.log("Connected to WebSocket server.");
+            updateStatusMessage("👄 Start speaking 👄");
+        };
 
-function setupWebSocket() {
-    socket = new WebSocket("ws://97.119.112.191:40001");
+        socket.onmessage = async (event) => {
+            const data = JSON.parse(event.data);
 
-    socket.onopen = () => {
-        console.log("Connected to WebSocket server.");
-        serverAvailable = true;
-        updateStatusMessage();
-    };
+            if (data.type === 'final') {
+                console.log("Received final transcription: ", data.text);
+                displayRealtimeText(data.text);
+                const response = await sendQuery(data.text);
+                canSendWebSocket = false; // Disable WebSocket communication
 
-    socket.onmessage = (event) => {
-        let data = JSON.parse(event.data);
+                await speak(response);
+                canSendWebSocket = true; // Re-enable WebSocket communication
+            }
+        };
 
-        switch (data.type) {
-      
-            case 'final':
-                fullSentences.push(data.text);
-                displayRealtimeText(""); // Refresh display with new full sentence
-                break;
+        socket.onclose = () => {
+            console.log("WebSocket connection closed.");
+        };
+
+        socket.onerror = (error) => {
+            console.error("WebSocket error:", error);
+            alert("WebSocket error - check console for details.");
+        };
+    }
+
+    async function sendQuery(text) {
+        if (!canSendWebSocket) {
+            console.log("WebSocket communication is temporarily disabled.");
+            return; // Return or handle appropriately if WebSocket communication is disabled
         }
-    };
-
-    socket.onclose = () => {
-        console.log("WebSocket connection closed.");
-        serverAvailable = false;
-        updateStatusMessage();
-    };
-
-    socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        alert("WebSocket error - check console for details.");
-    };
-}
-
-function displayRealtimeText(realtimeText) {
-    let displayedText = fullSentences.map((sentence, index) => {
-        let span = document.createElement('span');
-        span.textContent = sentence + " ";
-        span.className = index % 2 === 0 ? 'yellow' : 'cyan';
-        return span.outerHTML;
-    }).join('') + realtimeText;
-
-    displayDiv.innerHTML = displayedText;
-}
-
-function updateStatusMessage() {
-    if (!micAvailable)
-        displayRealtimeText("🎤  please allow microphone access  🎤");
-    else if (!serverAvailable)
-        displayRealtimeText("🖥️  please start server  🖥️");
-    else
-        displayRealtimeText("👄  start speaking  👄");
-}
-
-// Initialize WebSocket connection and UI
-setupWebSocket();
-updateStatusMessage();
-
-
-// Request access to the microphone
-navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    let audioContext = new AudioContext();
-    let source = audioContext.createMediaStreamSource(stream);
-    let processor = audioContext.createScriptProcessor(256, 1, 1);
-
-    source.connect(processor);
-    processor.connect(audioContext.destination);
-    micAvailable = true;
-    updateStatusMessage();
-
-    processor.onaudioprocess = function(e) {
-        let inputData = e.inputBuffer.getChannelData(0);
-        let outputData = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-            outputData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+        const response = await fetch('http://localhost:5000/rag/response', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({question: text})
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            let metadata = JSON.stringify({ sampleRate: audioContext.sampleRate });
-            let metadataBytes = new TextEncoder().encode(metadata);
-            let metadataLength = new ArrayBuffer(4);
-            new DataView(metadataLength).setInt32(0, metadataBytes.byteLength, true);
-            let combinedData = new Blob([metadataLength, metadataBytes, outputData.buffer]);
-            socket.send(combinedData);
-        }
-    };
-}).catch(e => {
-    console.error("Error accessing microphone:", e);
-    alert("Error accessing microphone - check console for details.");
+        return await response.json();
+    }
+
+    function speak(text) {
+        return new Promise((resolve, reject) => {
+            if (!isMicActive) {
+                console.log("Attempt to speak when mic is inactive.");
+                reject("Microphone is not active.");
+                return;
+            }
+            ttsUtterance = new SpeechSynthesisUtterance(text);
+            ttsUtterance.onstart = () => {
+                console.log("Speech synthesis started.");
+                processor.disconnect(); // Disconnect the processor to stop capturing
+                isMicActive = false; // Set microphone status to inactive
+                updateStatusMessage("🔊 Speaking...");
+            };
+            ttsUtterance.onend = () => {
+                console.log("Speech synthesis ended.");
+                processor.connect(audioContext.destination); // Reconnect processor
+                isMicActive = true; // Set microphone status to active
+                updateStatusMessage("👄 Start speaking 👄");
+                resolve();
+            };
+            ttsUtterance.onerror = (event) => {
+                console.error("Speech synthesis failed:", event.error);
+                reject(event.error);
+            };
+            window.speechSynthesis.speak(ttsUtterance);
+        });
+    }
+    
+    function displayRealtimeText(text) {
+        displayDiv.textContent = text;
+    }
+
+    function updateStatusMessage(message) {
+        displayDiv.textContent = message;
+    }
+
+    navigator.mediaDevices.getUserMedia({audio: true}).then(stream => {
+        audioContext = new AudioContext();
+        source = audioContext.createMediaStreamSource(stream);
+        processor = audioContext.createScriptProcessor(256, 1, 1);
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+
+        processor.onaudioprocess = function (e) {
+            if (!isMicActive || !canSendWebSocket) return; // Skip processing if conditions aren't met
+            let inputData = e.inputBuffer.getChannelData(0);
+            let outputData = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+                outputData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+            }
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                let metadata = JSON.stringify({sampleRate: audioContext.sampleRate});
+                let metadataBytes = new TextEncoder().encode(metadata);
+                let metadataLength = new ArrayBuffer(4);
+                new DataView(metadataLength).setInt32(0, metadataBytes.byteLength, true);
+                let combinedData = new Blob([metadataLength, metadataBytes, outputData.buffer]);
+                socket.send(combinedData);
+            }
+        };
+    }).catch(e => {
+        console.error("Error accessing microphone:", e);
+        alert("Error accessing microphone - check console for details.");
+    });
+
+    setupWebSocket();
 });
