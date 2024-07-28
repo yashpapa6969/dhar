@@ -72,13 +72,15 @@ def perform_asr(audio):
 
 
 def perform_diarization(audio):
-    diarization = diarization_pipeline({"waveform": torch.from_numpy(audio).to(device), "sample_rate": 16000})
+    audio1= torch.from_numpy(audio).float().to(device)
+    diarization = diarization_pipeline({"waveform": audio1, "sample_rate": 16000})
     return diarization
 
 
 def process_audio_chunk(audio):
     try:
-        speech_timestamps = get_speech_timestamps(torch.from_numpy(audio), vad_model, threshold=0.5)
+        audio1= torch.from_numpy(audio).float().to(device)
+        speech_timestamps = get_speech_timestamps(audio1, vad_model, threshold=0.5)
         if not speech_timestamps:
             return None, None, None
 
