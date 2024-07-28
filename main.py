@@ -8,21 +8,16 @@ from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from pyannote.audio import Pipeline
 import noisereduce as nr
 from resemblyzer import VoiceEncoder, preprocess_wav
-import logging
 from collections import deque
 import onnxruntime as ort
 import re
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 # Global configurations
 SAMPLE_RATE = 16000
-CHUNK_DURATION = 10.0  # Process in 30-second chunks for better context
+CHUNK_DURATION = 1.0  # Process in 1-second chunks for lower latency
 CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DURATION)
-OVERLAP_DURATION = 3.0  # 5-second overlap between chunks
-OVERLAP_SIZE = int(SAMPLE_RATE * OVERLAP_DURATION)
+CONTEXT_DURATION = 10.0  # Keep 10 seconds of context
+CONTEXT_SIZE = int(SAMPLE_RATE * CONTEXT_DURATION)
 
 # Initialize CUDA if available
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -61,13 +56,12 @@ vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                   force_reload=True,
                                   onnx=True)
 
-
 (get_speech_timestamps, _, read_audio, *_) = utils
 
 # Transcription handling
 transcription_buffer = deque(maxlen=10)  # Store last 10 transcriptions
 QUERY_END_PHRASES = [".", "?", "!"]
-SILENCE_THRESHOLD = 3.0  # seconds of silence to consider end of query
+SILENCE_THRESHOLD = 1.0  # seconds of silence to consider end of query
 
 def preprocess_audio(audio):
     audio_tensor = torch.from_numpy(audio).float()
@@ -101,7 +95,6 @@ async def process_audio_chunk(audio):
         speaker_embedding = voice_encoder.embed_utterance(preprocess_wav(audio))
         return transcription, diarization, speaker_embedding
     except Exception as e:
-        logger.error(f"Error processing audio chunk: {str(e)}")
         return None, None, None
 
 def is_query_complete(transcription):
@@ -112,11 +105,10 @@ async def send_transcription(websocket, transcription, is_final=False):
         'type': 'final' if is_final else 'interim',
         'text': transcription
     }))
-    logger.info(f"{'Final' if is_final else 'Interim'} Transcription: {transcription}")
+    print(f"{'Final' if is_final else 'Interim'} Transcription: {transcription}")
 
 async def handle_client(websocket, path):
-    logger.info("Client connected")
-    audio_buffer = deque(maxlen=CHUNK_SIZE + OVERLAP_SIZE)
+    audio_buffer = deque(maxlen=CONTEXT_SIZE)
     last_speech_time = asyncio.get_event_loop().time()
 
     async for message in websocket:
@@ -137,9 +129,9 @@ async def handle_client(websocket, path):
         # Add to buffer
         audio_buffer.extend(audio_np)
 
-        # Process chunks
+        # Process when we have enough data
         if len(audio_buffer) >= CHUNK_SIZE:
-            chunk = np.array(list(audio_buffer)[-CHUNK_SIZE:])
+            chunk = np.array(list(audio_buffer)[-CONTEXT_SIZE:])
             
             transcription, diarization, speaker_embedding = await process_audio_chunk(chunk)
 
@@ -163,17 +155,9 @@ async def handle_client(websocket, path):
                     await send_transcription(websocket, combined_transcription, is_final=True)
                     transcription_buffer.clear()
 
-            if diarization:
-                logger.info(f"Diarization: {diarization}")
-            if speaker_embedding is not None:
-                logger.info(f"Speaker embedding shape: {speaker_embedding.shape}")
-
-            # Keep the overlap for the next chunk
-            audio_buffer = deque(list(audio_buffer)[-OVERLAP_SIZE:], maxlen=CHUNK_SIZE + OVERLAP_SIZE)
-
 async def main():
     server = await websockets.serve(handle_client, "0.0.0.0", 5000)
-    logger.info("Server started. Press Ctrl+C to stop the server.")
+    print("Server started. Press Ctrl+C to stop the server.")
     await server.wait_closed()
 
 if __name__ == "__main__":
