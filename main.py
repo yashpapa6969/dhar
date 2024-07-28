@@ -130,7 +130,7 @@ def perform_diarization(audio: np.ndarray) -> dict:
 async def process_audio_chunk(chunk: AudioChunk):
     try:
         audio1 = torch.from_numpy(chunk.audio).float()
-        speech_timestamps = get_speech_timestamps(audio1, vad_model, threshold=0.5)
+        speech_timestamps = get_speech_timestamps(audio1, vad_model, threshold=0.5, min_speech_duration_ms=MIN_SPEECH_DURATION * 1000)
         
         if not speech_timestamps:
             return None, None, None, None
@@ -178,19 +178,15 @@ async def handle_client(websocket, path):
 
             # Process chunks
             chunk = audio_buffer.get(CHUNK_DURATION)
-            chunk_obj = AudioChunk(chunk, timestamp)
-            transcription, timestamps, diarization, speaker_embedding = await process_audio_chunk(chunk_obj)
+            transcription, timestamps, diarization, speaker_embedding = await process_audio_chunk(AudioChunk(chunk, timestamp))
 
             if transcription:
                 last_speech_time = time.time()
                 speech_active = True
                 
                 # Add transcription with timestamps
-                if timestamps:
-                    for t in timestamps:
-                        transcription_manager.add(t['text'], t['timestamp'][0] + timestamp, t['timestamp'][1] + timestamp)
-                else:
-                    transcription_manager.add(transcription, timestamp, timestamp + CHUNK_DURATION)
+                for t in timestamps:
+                    transcription_manager.add(t['text'], t['timestamp'][0] + timestamp, t['timestamp'][1] + timestamp)
                 
                 # Send interim transcription
                 concatenated_transcription = transcription_manager.get_concatenated()
