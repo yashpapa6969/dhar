@@ -79,7 +79,7 @@ def perform_diarization(audio):
 
 def process_audio_chunk(audio):
     try:
-        audio1= torch.from_numpy(audio).float().to(device)
+        audio1= torch.from_numpy(audio).float()
         speech_timestamps = get_speech_timestamps(audio1, vad_model, threshold=0.5)
         if not speech_timestamps:
             return None, None, None
