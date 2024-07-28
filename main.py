@@ -72,8 +72,13 @@ def perform_asr(audio):
 
 
 def perform_diarization(audio):
+    print(audio)
     audio1= torch.from_numpy(audio).float().to(device)
-    diarization = diarization_pipeline({"waveform": audio1, "sample_rate": 16000})
+    audio_tensor = torch.from_numpy(audio).float().to(device)
+    print(audio_tensor)
+    if audio_tensor.dim() == 1:
+        audio_tensor = audio_tensor.unsqueeze(0)  # Adds a channel dimension [1, time]
+    diarization = diarization_pipeline({"waveform": audio_tensor, "sample_rate": 16000})
     return diarization
 
 
