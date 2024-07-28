@@ -208,7 +208,7 @@ async def handle_client(websocket, path):
             logger.error(f"Error handling message: {str(e)}")
 
 async def main():
-    server = await websockets.serve(handle_client, "0.0.0.0", 8001)
+    server = await websockets.serve(handle_client, "0.0.0.0", 5000)
     logger.info("Server started. Press Ctrl+C to stop the server.")
     await server.wait_closed()
 
