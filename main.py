@@ -187,7 +187,7 @@ async def handle_client(websocket, path):
                 logger.info(f"Speaker embedding shape: {speaker_embedding.shape}")
 
 async def main():
-    server = await websockets.serve(handle_client, "localhost", 8001)
+    server = await websockets.serve(handle_client, "0.0.0.0", 5000)
     logger.info("Server started. Press Ctrl+C to stop the server.")
     await server.wait_closed()
 
