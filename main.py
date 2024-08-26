@@ -61,8 +61,7 @@ vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                   force_reload=True,
                                   onnx=True)
 
-(get_speech_timestamps, read_audio, *) = utils
-
+(get_speech_timestamps, _, read_audio, *_) = utils
 # Initialize sentiment and tone classification models
 sentiment_classifier = pipeline("text-classification", model="Venkatesh4342/distilbert-helpdesk-sentiment")
 tone_classifier = pipeline("audio-classification", model="Venkatesh4342/hubert-base-ls960-tone-classification")
