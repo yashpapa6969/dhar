@@ -171,7 +171,7 @@ async def handle_client(websocket, path):
             audio_buffer = deque(list(audio_buffer)[-OVERLAP_SIZE:], maxlen=CHUNK_SIZE + OVERLAP_SIZE)
 
 async def main():
-    server = await websockets.serve(handle_client, "0.0.0.0", 5000)
+    server = await websockets.serve(handle_client, "0.0.0.0", 5001)
     logger.info("Server started. Press Ctrl+C to stop the server.")
     await server.wait_closed()
 
