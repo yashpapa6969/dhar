@@ -139,7 +139,6 @@ async def handle_client(websocket, path):
     last_speech_time = asyncio.get_event_loop().time()
 
     async for message in websocket:
-        logger.info(message)
         metadata_length = int.from_bytes(message[:4], byteorder='little')
         metadata_json = message[4:4+metadata_length].decode('utf-8')
         metadata = json.loads(metadata_json)
