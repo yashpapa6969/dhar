@@ -124,7 +124,15 @@ grade_prompt = ChatPromptTemplate.from_messages(
 retrieval_grader = grade_prompt | structured_llm_grader
 
 # Prompt
-prompt = hub.pull("rlm/rag-prompt")
+prompt = """You are an assistant for question-answering tasks specifically targeted to the banking and finance sector. Use the following pieces of retrieved context and historical context to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
+
+Question: {question} 
+
+Context: {context}
+
+Historical Context: {historicalcontext}
+
+Answer:"""
 
 # LLM
 llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
