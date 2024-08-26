@@ -14,7 +14,7 @@ import re
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 # Global configurations
 SAMPLE_RATE = 16000
@@ -187,5 +187,5 @@ async def main():
     logger.info("Server started. Press Ctrl+C to stop the server.")
     await server.wait_closed()
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     asyncio.run(main())
