@@ -3,11 +3,11 @@ document.addEventListener("DOMContentLoaded", () => {
     let socket;
     let audioContext, source, processor;
     let ttsUtterance;
-    let isMicActive = true; // New variable to track microphone status
+    let isMicActive = true; // Variable to track microphone status
     let canSendWebSocket = true; // Flag to control WebSocket communication
 
     function setupWebSocket() {
-        socket = new WebSocket("ws://97.119.112.191:40001");
+        socket = new WebSocket("ws://193.149.164.132:37571");
         socket.onopen = () => {
             console.log("Connected to WebSocket server.");
             updateStatusMessage("👄 Start speaking 👄");
@@ -18,7 +18,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (data.type === 'final') {
                 console.log("Received final transcription: ", data.text);
-                displayRealtimeText(data.text);
+                console.log("Sentiment analysis: ", data.sentiment);
+                
+                displayRealtimeText(`${data.text} (Sentiment: ${data.sentiment[0]}, Score: ${data.sentiment[1]})`);
+
+                // Handle sentiment-specific logic here
+                if (data.sentiment[0] === "Positive") {
+                    console.log("The sentiment is positive.");
+                    // You can add any positive-specific logic here
+                } else if (data.sentiment[0] === "Negative") {
+                    console.log("The sentiment is negative.");
+                    // Add any negative-specific logic here
+                }
+
                 const response = await sendQuery(data.text);
                 canSendWebSocket = false; // Disable WebSocket communication
 
@@ -81,7 +93,7 @@ document.addEventListener("DOMContentLoaded", () => {
             window.speechSynthesis.speak(ttsUtterance);
         });
     }
-    
+
     function displayRealtimeText(text) {
         displayDiv.textContent = text;
     }
