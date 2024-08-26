@@ -10,7 +10,6 @@ import noisereduce as nr
 from resemblyzer import VoiceEncoder, preprocess_wav
 import logging
 from collections import deque
-import onnxruntime as ort
 import re
 
 # Set up logging
