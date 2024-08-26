@@ -20,8 +20,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 console.log("Received final transcription: ", data.text);
                 console.log("Sentiment analysis: ", data.sentiment);
                 
-                displayRealtimeText(`${data.text} (Sentiment: ${data.sentiment[0]}, Score: ${data.sentiment[1]})`);
-
+                displayRealtimeText(
+                    `${data.text} (Sentiment: ${data.sentiment[0]}, Score: ${data.sentiment[1]}) (Tone: ${data.tone[0]}, Score: ${data.tone[1]})`
+                );
                 // Handle sentiment-specific logic here
                 if (data.sentiment[0] === "Positive") {
                     console.log("The sentiment is positive.");
