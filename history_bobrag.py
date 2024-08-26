@@ -60,13 +60,21 @@ weaviate_client = weaviate.Client(
 
 embedding= OpenAIEmbeddings(model="text-embedding-3-small")
 
-retriever = WeaviateHybridSearchRetriever(
+hist_retriever = WeaviateHybridSearchRetriever(
     client=weaviate_client,
     index_name="Bob",  # Your collection name
     text_key="response",  # The field you want to use as the main text for retrieval
     attributes=["phone", "query","response"],# Additional attributes to retrieve # Set to True if you want to create the schema if it doesn't exist
     alpha=0.6,
     k=3
+    )
+retriever = WeaviateHybridSearchRetriever(
+    client=weaviate_client,
+    index_name="Bobfull",  # Your collection name
+    text_key="chatbotInstructions",  # The field you want to use as the main text for retrieval
+    attributes=["topic", "userQueryExample","chatbotInstructions","sampleResponse"],# Additional attributes to retrieve # Set to True if you want to create the schema if it doesn't exist
+    alpha=0.6,
+    k=5
     )
 # Data model
 class RouteQuery(BaseModel):
@@ -123,8 +131,8 @@ grade_prompt = ChatPromptTemplate.from_messages(
 
 retrieval_grader = grade_prompt | structured_llm_grader
 
-# Prompt
-prompt = """You are an assistant for question-answering tasks specifically targeted to the banking and finance sector. Use the following pieces of retrieved context and historical context to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
+# # Prompt
+prompt_template= """You are an assistant for question-answering tasks specifically targeted to the banking and finance sector. Use the following pieces of retrieved context and historical context to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
 
 Question: {question} 
 
@@ -134,6 +142,9 @@ Historical Context: {historicalcontext}
 
 Answer:"""
 
+prompt = PromptTemplate(
+    template=prompt_template, input_variables=["question","context","historicalcontext"]
+)
 # LLM
 llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
 
@@ -248,6 +259,7 @@ class GraphState(TypedDict):
     filters: dict
     generation: str
     documents: List[str]
+    historicalcontext: List[str]
 
 def retrieve(state):
     """
@@ -263,11 +275,13 @@ def retrieve(state):
     question = state["question"]
     filters = state["filters"]
     if filters is None:
-          documents = retriever.invoke(question)
-          return {"documents": documents, "question": question}
+          hist_documents = hist_retriever.invoke(question)
+          context_documents = retriever.invoke(question)
+          return {"historicalcontext": hist_documents,"documents":context_documents, "question": question}
     else:
-          documents = retriever.invoke(question, where_filter=filters)
-          return {"documents": documents, "question": question,"filters" : filters}
+          hist_documents = hist_retriever.invoke(question, where_filter=filters)
+          context_documents = retriever.invoke(question)
+          return {"historicalcontext": hist_documents,"documents":context_documents, "question": question,"filters" : filters}
 
 
 def generate(state):
@@ -283,10 +297,10 @@ def generate(state):
     print("---GENERATE---")
     question = state["question"]
     documents = state["documents"]
-
+    hist_documents = state["historicalcontext"]
     # RAG generation
-    generation = rag_chain.invoke({"context": documents, "question": question})
-    return {"documents": documents, "question": question, "generation": generation}
+    generation = rag_chain.invoke({"context": documents, "historicalcontext":hist_documents,"question": question})
+    return {"documents": documents,"historicalcontext":hist_documents, "question": question, "generation": generation}
 
 
 def grade_documents(state):
@@ -317,7 +331,21 @@ def grade_documents(state):
         else:
             print("---GRADE: DOCUMENT NOT RELEVANT---")
             continue
-    return {"documents": filtered_docs, "question": question}
+
+    hist_documents =state['historicalcontext']
+    filtered_hist_docs = []
+    for d in hist_documents:
+        score = retrieval_grader.invoke(
+            {"question": question, "document": d.page_content}
+        )
+        grade = score.binary_score
+        if grade == "yes":
+            print("---GRADE: DOCUMENT RELEVANT---")
+            filtered_hist_docs.append(d)
+        else:
+            print("---GRADE: DOCUMENT NOT RELEVANT---")
+            continue
+    return {"documents": filtered_docs,"historicalcontext":filtered_hist_docs, "question": question}
 
 
 def llm_fallback(state):
