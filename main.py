@@ -15,13 +15,13 @@ import re
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(_name_)
 
 # Global configurations
 SAMPLE_RATE = 16000
-CHUNK_DURATION = 4.0  # Process in 30-second chunks for better context
+CHUNK_DURATION = 4.0
 CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DURATION)
-OVERLAP_DURATION = 2.0  # 5-second overlap between chunks
+OVERLAP_DURATION = 2.0
 OVERLAP_SIZE = int(SAMPLE_RATE * OVERLAP_DURATION)
 
 # Initialize CUDA if available
@@ -61,7 +61,11 @@ vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                   force_reload=True,
                                   onnx=True)
 
-(get_speech_timestamps, _, read_audio, *_) = utils
+(get_speech_timestamps, , read_audio, *) = utils
+
+# Initialize sentiment and tone classification models
+sentiment_classifier = pipeline("text-classification", model="Venkatesh4342/distilbert-helpdesk-sentiment")
+tone_classifier = pipeline("audio-classification", model="Venkatesh4342/hubert-base-ls960-tone-classification")
 
 # Transcription handling
 transcription_buffer = deque(maxlen=10)  # Store last 10 transcriptions
@@ -87,31 +91,49 @@ def perform_diarization(audio):
     diarization = diarization_pipeline({"waveform": audio_tensor, "sample_rate": 16000})
     return diarization
 
+def perform_sentiment_analysis(text):
+    result = sentiment_classifier(text)
+    return result[0]['label'], result[0]['score']
+
+def perform_tone_classification(audio):
+    result = tone_classifier(audio)
+    return result[0]['label'], result[0]['score']
+
 async def process_audio_chunk(audio):
     try:
         audio1 = torch.from_numpy(audio).float()
         speech_timestamps = get_speech_timestamps(audio1, vad_model, threshold=0.5)
         if not speech_timestamps:
-            return None, None, None
+            return None, None, None, None, None
 
         audio = preprocess_audio(audio)
         transcription = perform_asr(audio)
         diarization = perform_diarization(audio)
         speaker_embedding = voice_encoder.embed_utterance(preprocess_wav(audio))
-        return transcription, diarization, speaker_embedding
+        
+        sentiment, sentiment_score = perform_sentiment_analysis(transcription)
+        tone, tone_score = perform_tone_classification(audio)
+        
+        return transcription, diarization, speaker_embedding, (sentiment, sentiment_score), (tone, tone_score)
     except Exception as e:
         logger.error(f"Error processing audio chunk: {str(e)}")
-        return None, None, None
+        return None, None, None, None, None
 
 def is_query_complete(transcription):
     return any(transcription.strip().endswith(phrase) for phrase in QUERY_END_PHRASES)
 
-async def send_transcription(websocket, transcription, is_final=False):
+async def send_transcription(websocket, transcription, is_final=False, sentiment=None, tone=None):
     await websocket.send(json.dumps({
         'type': 'final' if is_final else 'interim',
-        'text': transcription
+        'text': transcription,
+        'sentiment': sentiment,
+        'tone': tone
     }))
     logger.info(f"{'Final' if is_final else 'Interim'} Transcription: {transcription}")
+    if sentiment:
+        logger.info(f"Sentiment: {sentiment[0]} (score: {sentiment[1]:.2f})")
+    if tone:
+        logger.info(f"Tone: {tone[0]} (score: {tone[1]:.2f})")
 
 async def handle_client(websocket, path):
     logger.info("Client connected")
@@ -119,47 +141,40 @@ async def handle_client(websocket, path):
     last_speech_time = asyncio.get_event_loop().time()
 
     async for message in websocket:
-        # Extract metadata and audio data
         metadata_length = int.from_bytes(message[:4], byteorder='little')
         metadata_json = message[4:4+metadata_length].decode('utf-8')
         metadata = json.loads(metadata_json)
         sample_rate = metadata['sampleRate']
         audio_data = message[4+metadata_length:]
         
-        # Convert 16-bit PCM to 32-bit float
         audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
-        # Resample if necessary
         if sample_rate != SAMPLE_RATE:
             audio_np = torchaudio.functional.resample(torch.from_numpy(audio_np), sample_rate, SAMPLE_RATE).numpy()
 
-        # Add to buffer
         audio_buffer.extend(audio_np)
 
-        # Process chunks
         if len(audio_buffer) >= CHUNK_SIZE:
             chunk = np.array(list(audio_buffer)[-CHUNK_SIZE:])
             
-            transcription, diarization, speaker_embedding = await process_audio_chunk(chunk)
+            transcription, diarization, speaker_embedding, sentiment, tone = await process_audio_chunk(chunk)
 
             if transcription:
                 last_speech_time = asyncio.get_event_loop().time()
                 transcription_buffer.append(transcription)
                 
-                # Combine recent transcriptions for context
                 combined_transcription = " ".join(transcription_buffer)
                 
                 if is_query_complete(combined_transcription):
-                    await send_transcription(websocket, combined_transcription, is_final=True)
+                    await send_transcription(websocket, combined_transcription, is_final=True, sentiment=sentiment, tone=tone)
                     transcription_buffer.clear()
                 else:
-                    await send_transcription(websocket, combined_transcription, is_final=False)
+                    await send_transcription(websocket, combined_transcription, is_final=False, sentiment=sentiment, tone=tone)
             else:
-                # Check if silence duration exceeds the threshold
                 current_time = asyncio.get_event_loop().time()
                 if current_time - last_speech_time > SILENCE_THRESHOLD and transcription_buffer:
                     combined_transcription = " ".join(transcription_buffer)
-                    await send_transcription(websocket, combined_transcription, is_final=True)
+                    await send_transcription(websocket, combined_transcription, is_final=True, sentiment=sentiment, tone=tone)
                     transcription_buffer.clear()
 
             if diarization:
@@ -167,7 +182,6 @@ async def handle_client(websocket, path):
             if speaker_embedding is not None:
                 logger.info(f"Speaker embedding shape: {speaker_embedding.shape}")
 
-            # Keep the overlap for the next chunk
             audio_buffer = deque(list(audio_buffer)[-OVERLAP_SIZE:], maxlen=CHUNK_SIZE + OVERLAP_SIZE)
 
 async def main():
@@ -175,5 +189,5 @@ async def main():
     logger.info("Server started. Press Ctrl+C to stop the server.")
     await server.wait_closed()
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     asyncio.run(main())
