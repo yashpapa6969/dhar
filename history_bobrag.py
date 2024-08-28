@@ -227,7 +227,7 @@ re_write_prompt = ChatPromptTemplate.from_messages(
 
 question_rewriter = re_write_prompt | llm | StrOutputParser()
 
-prompt_template = """You are a helpdesk greeting and reply assistant for a bank. Your role is to greet users and provide appropriate follow-up responses. You should respond to greetings with a greeting, such as 'Hello, how may I assist you?'.If a user asks a question, respond with a polite refusal, such as 'I’m sorry, I cannot answer that question.'
+prompt_template = """You are a helpdesk greeting and reply assistant. Your role is to greet users and provide appropriate follow-up responses. You should respond to greetings with a greeting, such as 'Hello, how may I assist you?'.If a user asks a question, respond with a polite refusal, such as 'I’m sorry, I cannot answer that question.'
 Question: {question} \nAnswer:
 """
 prompt = PromptTemplate(
