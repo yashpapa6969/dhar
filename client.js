@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let canSendWebSocket = true; // Flag to control WebSocket communication
 
     function setupWebSocket() {
-        socket = new WebSocket("ws://193.149.164.132:37571");
+        socket = new WebSocket("ws://104.167.17.11:36940");
         socket.onopen = () => {
             console.log("Connected to WebSocket server.");
             updateStatusMessage("👄 Start speaking 👄");
@@ -31,11 +31,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     console.log("The sentiment is negative.");
                     // Add any negative-specific logic here
                 }
-
+console.log(data.text);
                 const response = await sendQuery(data.text);
                 canSendWebSocket = false; // Disable WebSocket communication
 
-                await speak(response);
+                await speak(response.response);
                 canSendWebSocket = true; // Re-enable WebSocket communication
             }
         };
@@ -55,7 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
             console.log("WebSocket communication is temporarily disabled.");
             return; // Return or handle appropriately if WebSocket communication is disabled
         }
-        const response = await fetch('http://localhost:5000/rag/response', {
+        const response = await fetch('https://5274-2401-4900-4e76-2b4-c1b-1567-434d-9e26.ngrok-free.app/rag', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({question: text})
