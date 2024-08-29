@@ -62,9 +62,9 @@ embedding= OpenAIEmbeddings(model="text-embedding-3-small")
 
 hist_retriever = WeaviateHybridSearchRetriever(
     client=weaviate_client,
-    index_name="Bob",  # Your collection name
+    index_name="Bobmail",  # Your collection name
     text_key="response",  # The field you want to use as the main text for retrieval
-    attributes=["phone", "query","response"],# Additional attributes to retrieve # Set to True if you want to create the schema if it doesn't exist
+    attributes=["phone","email","date", "query","response"],# Additional attributes to retrieve # Set to True if you want to create the schema if it doesn't exist
     alpha=0.6,
     k=3
     )
@@ -92,7 +92,7 @@ llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0)
 structured_llm_router = llm.with_structured_output(RouteQuery)
 
 # Prompt
-system = """You are an expert at routing a user question to a vectorstore or LLm Fallback(use llm knowledge).
+system = """You are an expert at routing a user question to a vectorstore or LLm Fallback(only for greeting and queries not related to banking).
 The vectorstore contains documents related to Bank user's Query, Financial documents, User Guide on Bank functionality.
 Use the vectorstore for questions on these topics. Otherwise, if the questions are generic which can be answered using LLM knowledge use llm-fallback."""
 route_prompt = ChatPromptTemplate.from_messages(
