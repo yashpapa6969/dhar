@@ -65,16 +65,16 @@ hist_retriever = WeaviateHybridSearchRetriever(
     index_name="Bobmail",  # Your collection name
     text_key="response",  # The field you want to use as the main text for retrieval
     attributes=["phone","email","date", "query","response"],# Additional attributes to retrieve # Set to True if you want to create the schema if it doesn't exist
-    alpha=0.6,
-    k=3
+    alpha=0.9,
+    k=2
     )
 retriever = WeaviateHybridSearchRetriever(
     client=weaviate_client,
     index_name="Bobfull",  # Your collection name
     text_key="chatbotInstructions",  # The field you want to use as the main text for retrieval
     attributes=["topic", "userQueryExample","chatbotInstructions","sampleResponse"],# Additional attributes to retrieve # Set to True if you want to create the schema if it doesn't exist
-    alpha=0.6,
-    k=5
+    alpha=0.9,
+    k=2
     )
 # Data model
 class RouteQuery(BaseModel):
