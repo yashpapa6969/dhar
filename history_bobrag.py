@@ -562,12 +562,14 @@ def stream_app(question, phone_number=None):
     }
     
     # If a phone number is provided, construct the filters
-    if phone_number:
+    if phone_number != None:
         inputs["filters"] = {
             "path": ["phone"],
             "operator": "Equal",
             "valueString": phone_number
         }
+    else:
+        inputs["filter"] = None
     
     # Simulating the streaming of outputs
     final_output = None
