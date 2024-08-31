@@ -569,7 +569,7 @@ def stream_app(question, phone_number=None):
             "valueString": phone_number
         }
     else:
-        inputs["filter"] = None
+        inputs["filters"] = None
     
     # Simulating the streaming of outputs
     final_output = None
